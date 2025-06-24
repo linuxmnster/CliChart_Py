@@ -1,7 +1,7 @@
 import socket
 import threading
 import os
-from core.ngrok_handler import start_ngrok
+from core.ngrok_handle import start_ngrok
 from config import PORT
 from colorama import Fore, Style, init
 
@@ -12,7 +12,7 @@ user_colors = {}     # username: color
 PASSWORD = ""
 log_file = None
 
-# Define reusable color pool
+# Color pool
 color_pool = [
     Fore.GREEN, Fore.CYAN, Fore.MAGENTA, Fore.YELLOW,
     Fore.BLUE, Fore.LIGHTMAGENTA_EX, Fore.LIGHTCYAN_EX
@@ -56,7 +56,6 @@ def handle_client(conn, addr):
             conn.close()
             return
 
-        # Assign color to this user
         user_colors[username] = get_next_color()
         clients[username] = conn
 

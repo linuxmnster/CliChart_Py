@@ -1,6 +1,6 @@
 import socket
 import threading
-from colorama import init, Fore, Style
+from colorama import init, Fore
 
 init(autoreset=True)
 
@@ -19,12 +19,12 @@ def start_client():
         client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         client.connect((host, port))
 
-        # --- Password Authentication ---
+        # Password authentication
         prompt = client.recv(1024).decode()
         print(Fore.YELLOW + prompt)
         client.send(input(Fore.YELLOW + "> ").strip().encode())
 
-        # --- Username ---
+        # Username
         prompt = client.recv(1024).decode()
         if "❌" in prompt:
             print(Fore.RED + prompt)
@@ -40,20 +40,18 @@ def start_client():
 
         stop_flag = threading.Event()
 
-        # --- Receive messages from others ---
         def receive():
             while not stop_flag.is_set():
                 try:
                     msg = client.recv(1024).decode()
                     if msg:
-                        print(Fore.WHITE + msg)
+                        print("\r" + Fore.WHITE + msg + "\n" + Fore.YELLOW + f"{username}> ", end="")
                     else:
                         break
                 except:
-                    print(Fore.RED + "❌ Disconnected from server.")
+                    print(Fore.RED + "\n❌ Disconnected from server.")
                     break
 
-        # --- Send your own messages ---
         def send():
             while not stop_flag.is_set():
                 try:
@@ -68,7 +66,6 @@ def start_client():
                 except:
                     break
 
-        # Start threads
         threading.Thread(target=receive, daemon=True).start()
         threading.Thread(target=send, daemon=True).start()
 
