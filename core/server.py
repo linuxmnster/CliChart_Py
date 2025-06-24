@@ -1,7 +1,7 @@
 import socket
 import threading
 import os
-from core.ngrok_handler import start_ngrok
+from core.ngrok_handle import start_ngrok
 from config import PORT
 from colorama import Fore, init
 

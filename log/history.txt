@@ -1,0 +1,9 @@
+[32m🟢 sai has joined the chat!
+[37msai> hey ther man
+[37msai> how are you guys
+[32m🟢 ram has joined the chat!
+[37mram> hey guys
+[37mram> how are you
+[37msai> i am great
+[31m🔴 sai has left the chat.
+[31m🔴 ram has left the chat.
