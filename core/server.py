@@ -1,20 +1,35 @@
 import socket
 import threading
 import os
-from core.ngrok_handle import start_ngrok
+from core.ngrok_handler import start_ngrok
 from config import PORT
-from colorama import Fore, init
+from colorama import Fore, Style, init
 
 init(autoreset=True)
 
-clients = {}
+clients = {}         # username: socket
+user_colors = {}     # username: color
 PASSWORD = ""
 log_file = None
+
+# Define reusable color pool
+color_pool = [
+    Fore.GREEN, Fore.CYAN, Fore.MAGENTA, Fore.YELLOW,
+    Fore.BLUE, Fore.LIGHTMAGENTA_EX, Fore.LIGHTCYAN_EX
+]
+color_index = 0
+
+def get_next_color():
+    global color_index
+    color = color_pool[color_index % len(color_pool)]
+    color_index += 1
+    return color
 
 def broadcast(message, exclude_conn=None):
     if log_file:
         log_file.write(message + "\n")
         log_file.flush()
+
     for user, conn in clients.items():
         if conn != exclude_conn:
             try:
@@ -23,49 +38,58 @@ def broadcast(message, exclude_conn=None):
                 pass
 
 def handle_client(conn, addr):
+    global color_index
+
     try:
         conn.send("Enter room password: ".encode())
         pwd = conn.recv(1024).decode().strip()
         if pwd != PASSWORD:
-            conn.send(Fore.RED + "❌ Incorrect password. Connection closing.".encode())
+            conn.send("❌ Incorrect password. Connection closing.".encode())
             conn.close()
             return
 
         conn.send("Enter your username: ".encode())
-        name = conn.recv(1024).decode().strip()
+        username = conn.recv(1024).decode().strip()
 
-        if name in clients:
-            conn.send(Fore.RED + "❌ Username already taken.".encode())
+        if username in clients:
+            conn.send("❌ Username already taken.".encode())
             conn.close()
             return
 
-        clients[name] = conn
-        broadcast(Fore.GREEN + f"🟢 {name} has joined the chat!")
-        print(Fore.GREEN + f"[CONNECTED] {name} ({addr})")
+        # Assign color to this user
+        user_colors[username] = get_next_color()
+        clients[username] = conn
+
+        join_msg = f"{Fore.GREEN}🟢 {username} has joined the chat!"
+        print(join_msg)
+        broadcast(join_msg)
 
         while True:
             msg = conn.recv(1024).decode()
-            if msg == "":
+            if not msg:
                 break
-            broadcast(Fore.WHITE + f"{name}> {msg}", exclude_conn=conn)
+            formatted = f"{user_colors[username]}{username}> {Fore.WHITE}{msg}"
+            broadcast(formatted, exclude_conn=conn)
 
     except:
         pass
     finally:
         conn.close()
-        if name in clients:
-            del clients[name]
-            broadcast(Fore.RED + f"🔴 {name} has left the chat.")
+        if username in clients:
+            del clients[username]
+            leave_msg = f"{Fore.RED}🔴 {username} has left the chat."
+            broadcast(leave_msg)
+            print(leave_msg)
 
 def kick_user(username):
     if username in clients:
         try:
-            clients[username].send(Fore.RED + "You were kicked by the host.".encode())
+            clients[username].send("You were kicked by the host.".encode())
             clients[username].close()
         except:
             pass
         del clients[username]
-        broadcast(Fore.MAGENTA + f"⚠️ {username} was kicked by the host.")
+        broadcast(f"{Fore.MAGENTA}⚠️ {username} was kicked by the host.")
 
 def start_server():
     global PASSWORD, log_file
@@ -91,7 +115,7 @@ def start_server():
 
     try:
         while True:
-            cmd = input(Fore.MAGENTA + "")
+            cmd = input(Fore.MAGENTA)
             if cmd.startswith("/kick "):
                 user = cmd.split(" ", 1)[1].strip()
                 kick_user(user)

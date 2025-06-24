@@ -1,6 +1,6 @@
 import socket
 import threading
-from colorama import init, Fore
+from colorama import init, Fore, Style
 
 init(autoreset=True)
 
@@ -19,10 +19,12 @@ def start_client():
         client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         client.connect((host, port))
 
+        # --- Password Authentication ---
         prompt = client.recv(1024).decode()
         print(Fore.YELLOW + prompt)
-        client.send(input("> ").strip().encode())
+        client.send(input(Fore.YELLOW + "> ").strip().encode())
 
+        # --- Username ---
         prompt = client.recv(1024).decode()
         if "❌" in prompt:
             print(Fore.RED + prompt)
@@ -30,32 +32,47 @@ def start_client():
             return
 
         print(Fore.YELLOW + prompt)
-        client.send(input("> ").strip().encode())
+        username = input(Fore.YELLOW + "> ").strip()
+        client.send(username.encode())
 
-        print(Fore.GREEN + "🟢 Connected! Type your messages below. Press Ctrl+C to exit.\n")
+        print(Fore.GREEN + "🟢 Connected! Type your messages below.")
+        print(Fore.MAGENTA + "📌 Type '/leave' to exit the chat.\n")
 
+        stop_flag = threading.Event()
+
+        # --- Receive messages from others ---
         def receive():
-            while True:
+            while not stop_flag.is_set():
                 try:
                     msg = client.recv(1024).decode()
                     if msg:
                         print(Fore.WHITE + msg)
+                    else:
+                        break
                 except:
                     print(Fore.RED + "❌ Disconnected from server.")
                     break
 
+        # --- Send your own messages ---
         def send():
-            while True:
+            while not stop_flag.is_set():
                 try:
-                    msg = input()
+                    msg = input(Fore.YELLOW + f"{username}> ")
+                    if msg.strip().lower() == "/leave":
+                        print(Fore.RED + "🚪 You left the chat.")
+                        client.send(f"{username} has left the chat.".encode())
+                        client.close()
+                        stop_flag.set()
+                        break
                     client.send(msg.encode())
                 except:
                     break
 
+        # Start threads
         threading.Thread(target=receive, daemon=True).start()
         threading.Thread(target=send, daemon=True).start()
 
-        while True:
+        while not stop_flag.is_set():
             pass
 
     except KeyboardInterrupt:
