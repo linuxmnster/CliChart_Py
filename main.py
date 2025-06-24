@@ -1,6 +1,9 @@
 import os
 import sys
 from core import server, client, ngrok_handler
+from colorama import init, Fore, Style
+
+init(autoreset=True)
 
 BANNER = r"""
   ██████  ██      ██       ██████ ██   ██  █████  ████████
@@ -12,14 +15,14 @@ BANNER = r"""
 """
 
 def set_ngrok_token():
-    token = input("Paste your ngrok auth token: ").strip()
+    token = input(Fore.YELLOW + "Paste your ngrok auth token: ").strip()
     os.system(f"ngrok config add-authtoken {token}")
-    print("✅ Token saved!")
+    print(Fore.GREEN + "✅ Token saved!")
 
 def show_menu():
     print(BANNER)
-    print("Welcome to CliChat\n")
-    print("[1] Host a Room")
+    print(Fore.MAGENTA + "\nWelcome to CliChat\n")
+    print(Fore.YELLOW + "[1] Host a Room")
     print("[2] Join a Room")
     print("[3] Set ngrok Token")
     print("[0] Exit\n")
@@ -27,7 +30,7 @@ def show_menu():
 def main():
     while True:
         show_menu()
-        choice = input("Enter your choice: ").strip()
+        choice = input(Fore.YELLOW + "Enter your choice: ").strip()
         if choice == "1":
             server.start_server()
         elif choice == "2":
@@ -35,10 +38,10 @@ def main():
         elif choice == "3":
             set_ngrok_token()
         elif choice == "0":
-            print("Exiting CliChat. Goodbye!")
+            print(Fore.CYAN + "Exiting CliChat. Goodbye!")
             sys.exit(0)
         else:
-            print("Invalid choice. Try again.\n")
+            print(Fore.RED + "❌ Invalid choice. Try again.\n")
 
 if __name__ == "__main__":
     main()
