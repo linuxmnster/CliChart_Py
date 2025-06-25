@@ -1,82 +1,148 @@
+# core/server.py
+
 import socket
 import threading
-from colorama import init, Fore
+import os
+from core.ngrok_handler import start_ngrok
+from config import PORT
+from colorama import Fore, init
 
 init(autoreset=True)
 
-def start_client():
+clients = {}         # username -> socket
+user_colors = {}     # username -> color
+PASSWORD = ""
+log_file = None
+
+# Pool of colors for different users
+color_pool = [
+    Fore.GREEN, Fore.CYAN, Fore.MAGENTA, Fore.YELLOW,
+    Fore.BLUE, Fore.LIGHTMAGENTA_EX, Fore.LIGHTCYAN_EX
+]
+color_index = 0
+
+def get_next_color():
+    global color_index
+    color = color_pool[color_index % len(color_pool)]
+    color_index += 1
+    return color
+
+def broadcast(message, exclude_conn=None):
+    if log_file:
+        log_file.write(message + "\n")
+        log_file.flush()
+    for user, conn in clients.items():
+        if conn != exclude_conn:
+            try:
+                conn.send(message.encode())
+            except:
+                pass
+
+def handle_client(conn, addr):
+    global color_index
     try:
-        print(Fore.CYAN + "\n🔗 Paste the ngrok link provided by the host.")
-        raw_link = input(Fore.YELLOW + "Example (0.tcp.in.ngrok.io:12345): ").strip()
-
-        if ":" not in raw_link:
-            print(Fore.RED + "❌ Invalid format. Must be hostname:port")
+        conn.send("Enter room password: ".encode())
+        pwd = conn.recv(1024).decode().strip()
+        if pwd != PASSWORD:
+            conn.send("❌ Incorrect password. Connection closing.".encode())
+            conn.close()
             return
 
-        host, port = raw_link.split(":")
-        port = int(port)
+        conn.send("Enter your username: ".encode())
+        username = conn.recv(1024).decode().strip()
 
-        client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        client.connect((host, port))
-
-        # Password authentication
-        prompt = client.recv(1024).decode()
-        print(Fore.YELLOW + prompt)
-        client.send(input(Fore.YELLOW + "> ").strip().encode())
-
-        # Username
-        prompt = client.recv(1024).decode()
-        if "❌" in prompt:
-            print(Fore.RED + prompt)
-            client.close()
+        if username in clients:
+            conn.send("❌ Username already taken.".encode())
+            conn.close()
             return
 
-        print(Fore.YELLOW + prompt)
-        username = input(Fore.YELLOW + "> ").strip()
-        client.send(username.encode())
+        clients[username] = conn
+        user_colors[username] = get_next_color()
 
-        print(Fore.GREEN + "🟢 Connected! Type your messages below.")
-        print(Fore.MAGENTA + "📌 Type '/leave' to exit the chat.\n")
+        join_msg = f"{Fore.GREEN}🟢 {username} has joined the chat!"
+        print(join_msg)
+        broadcast(join_msg)
 
-        stop_flag = threading.Event()
+        while True:
+            msg = conn.recv(1024).decode()
+            if not msg:
+                break
+            formatted = f"{user_colors[username]}{username}> {Fore.WHITE}{msg}"
+            broadcast(formatted, exclude_conn=conn)
 
-        def receive():
-            while not stop_flag.is_set():
-                try:
-                    msg = client.recv(1024).decode()
-                    if msg:
-                        print("\r" + Fore.WHITE + msg + "\n" + Fore.YELLOW + f"{username}> ", end="")
-                    else:
-                        break
-                except:
-                    print(Fore.RED + "\n❌ Disconnected from server.")
-                    break
+    except:
+        pass
+    finally:
+        conn.close()
+        if username in clients:
+            del clients[username]
+            leave_msg = f"{Fore.RED}🔴 {username} has left the chat."
+            broadcast(leave_msg)
+            print(leave_msg)
 
-        def send():
-            while not stop_flag.is_set():
-                try:
-                    msg = input(Fore.YELLOW + f"{username}> ")
-                    if msg.strip().lower() == "/leave":
-                        print(Fore.RED + "🚪 You left the chat.")
-                        client.send(f"{username} has left the chat.".encode())
-                        client.close()
-                        stop_flag.set()
-                        break
-                    client.send(msg.encode())
-                except:
-                    break
-
-        threading.Thread(target=receive, daemon=True).start()
-        threading.Thread(target=send, daemon=True).start()
-
-        while not stop_flag.is_set():
-            pass
-
-    except KeyboardInterrupt:
-        print(Fore.RED + "\n❌ Exiting CliChat.")
+def kick_user(username):
+    if username in clients:
         try:
-            client.close()
+            clients[username].send("You were kicked by the host.".encode())
+            clients[username].close()
         except:
             pass
-    except Exception as e:
-        print(Fore.RED + f"❌ Error: {e}")
+        del clients[username]
+        broadcast(f"{Fore.MAGENTA}⚠️ {username} was kicked by the host.")
+
+def start_server():
+    global PASSWORD, log_file
+    os.makedirs("log", exist_ok=True)
+    log_file = open("log/history.txt", "a", encoding="utf-8")
+
+    PASSWORD = input(Fore.YELLOW + "🔒 Set a password for your room: ").strip()
+
+    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_socket.bind(("0.0.0.0", PORT))
+    server_socket.listen()
+
+    public_link = start_ngrok(PORT)
+    if public_link == "ERROR":
+        print(Fore.RED + "❌ Could not start ngrok tunnel. Exiting.")
+        return
+
+    print(Fore.CYAN + f"\n🔗 Share this link: {public_link}")
+    print(Fore.GREEN + "🟢 Waiting for clients to join...\n")
+
+    def accept_loop():
+        while True:
+            try:
+                conn, addr = server_socket.accept()
+                threading.Thread(target=handle_client, args=(conn, addr), daemon=True).start()
+            except:
+                break
+
+    threading.Thread(target=accept_loop, daemon=True).start()
+
+    try:
+        while True:
+            cmd = input(Fore.MAGENTA)
+            if cmd.startswith("/kick "):
+                user = cmd.split(" ", 1)[1].strip()
+                kick_user(user)
+            elif cmd == "/exit":
+                print(Fore.RED + "❌ Server shutting down.")
+                for conn in clients.values():
+                    try:
+                        conn.send("Server is shutting down.".encode())
+                        conn.close()
+                    except:
+                        pass
+                server_socket.close()
+                log_file.close()
+                break
+    except KeyboardInterrupt:
+        print(Fore.RED + "\n❌ Server interrupted.")
+        for conn in clients.values():
+            try:
+                conn.send("Server is shutting down.".encode())
+                conn.close()
+            except:
+                pass
+        server_socket.close()
+        log_file.close()

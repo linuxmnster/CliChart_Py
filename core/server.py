@@ -3,16 +3,16 @@ import threading
 import os
 from core.ngrok_handle import start_ngrok
 from config import PORT
-from colorama import Fore, Style, init
+from colorama import Fore, init
 
 init(autoreset=True)
 
-clients = {}         # username: socket
-user_colors = {}     # username: color
+clients = {}         # username -> socket
+user_colors = {}     # username -> color
 PASSWORD = ""
 log_file = None
 
-# Color pool
+# Pool of colors for users
 color_pool = [
     Fore.GREEN, Fore.CYAN, Fore.MAGENTA, Fore.YELLOW,
     Fore.BLUE, Fore.LIGHTMAGENTA_EX, Fore.LIGHTCYAN_EX
@@ -29,7 +29,6 @@ def broadcast(message, exclude_conn=None):
     if log_file:
         log_file.write(message + "\n")
         log_file.flush()
-
     for user, conn in clients.items():
         if conn != exclude_conn:
             try:
@@ -39,7 +38,6 @@ def broadcast(message, exclude_conn=None):
 
 def handle_client(conn, addr):
     global color_index
-
     try:
         conn.send("Enter room password: ".encode())
         pwd = conn.recv(1024).decode().strip()
@@ -56,8 +54,8 @@ def handle_client(conn, addr):
             conn.close()
             return
 
-        user_colors[username] = get_next_color()
         clients[username] = conn
+        user_colors[username] = get_next_color()
 
         join_msg = f"{Fore.GREEN}🟢 {username} has joined the chat!"
         print(join_msg)
@@ -95,20 +93,27 @@ def start_server():
     os.makedirs("log", exist_ok=True)
     log_file = open("log/history.txt", "a", encoding="utf-8")
 
-    PASSWORD = input(Fore.YELLOW + "Set a password for your room: ").strip()
+    PASSWORD = input(Fore.YELLOW + "🔒 Set a password for your room: ").strip()
 
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_socket.bind(("0.0.0.0", PORT))
     server_socket.listen()
 
     public_link = start_ngrok(PORT)
+    if public_link == "ERROR":
+        print(Fore.RED + "❌ Could not start ngrok tunnel. Exiting.")
+        return
+
     print(Fore.CYAN + f"\n🔗 Share this link: {public_link}")
     print(Fore.GREEN + "🟢 Waiting for clients to join...\n")
 
     def accept_loop():
         while True:
-            conn, addr = server_socket.accept()
-            threading.Thread(target=handle_client, args=(conn, addr), daemon=True).start()
+            try:
+                conn, addr = server_socket.accept()
+                threading.Thread(target=handle_client, args=(conn, addr), daemon=True).start()
+            except:
+                break
 
     threading.Thread(target=accept_loop, daemon=True).start()
 
@@ -121,12 +126,21 @@ def start_server():
             elif cmd == "/exit":
                 print(Fore.RED + "❌ Server shutting down.")
                 for conn in clients.values():
-                    conn.send("Server is shutting down.".encode())
-                    conn.close()
+                    try:
+                        conn.send("Server is shutting down.".encode())
+                        conn.close()
+                    except:
+                        pass
                 server_socket.close()
                 log_file.close()
                 break
     except KeyboardInterrupt:
         print(Fore.RED + "\n❌ Server interrupted.")
+        for conn in clients.values():
+            try:
+                conn.send("Server is shutting down.".encode())
+                conn.close()
+            except:
+                pass
         server_socket.close()
         log_file.close()
