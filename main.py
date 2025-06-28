@@ -14,8 +14,16 @@ def get_banner():
 
 def set_ngrok_token():
     token = input(Fore.YELLOW + "Paste your ngrok auth token: ").strip()
+
     os.system(f"ngrok config add-authtoken {token}")
-    print(Fore.GREEN + "✅ Token saved!")
+
+    token_path = os.path.join("core", "token.txt")
+    try:
+        with open(token_path, "w") as f:
+            f.write(token)
+        print(Fore.GREEN + f"✅ Token saved to {token_path}")
+    except Exception as e:
+        print(Fore.RED + f"❌ Failed to save token: {e}")
 
 def show_menu():
     print(get_banner())
